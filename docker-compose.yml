@@ -1,0 +1,83 @@
+version: '3'
+
+services: 
+    redmine:
+        build: ./redmine
+        container_name: 'unix_redmine'
+        restart: always
+        ports:
+            - '8080:3000'
+        environment: 
+            - REDMINE_DB_MYSQL=mysql
+            - REDMINE_DB_PASSWORD=${MYSQL_PASSWORD}
+            - REDMINE_SECRET_KEY_BASE=${REDIME_SECRET_KEY}
+        volumes: 
+            - './redmine/files:/usr/src/redmine/files'
+        depends_on: 
+            - 'mysql'
+    
+    mysql:
+        image: 'mysql:5.7'
+        container_name: 'unix_mysql'
+        restart: always
+        environment: 
+            - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
+            - MYSQL_DATABASE=${MYSQL_DATABASE}
+        volumes: 
+            - './redmine/mysql-data:/var/lib/mysql'
+    
+    gitblit:
+        build: ./gitblit
+        container_name: 'unix_gitblit'
+        restart: always 
+        volumes: 
+            - './gitblit/data:/var/opt/gitblit'
+        ports: 
+            - '8443:8443'
+            - '80:8080'
+            - '9418:9418'
+            - '29418:29418'
+    
+    postgres:
+        image: 'postgres:10.1'
+        container_name: 'unix_postgres'
+        volumes: 
+            - './concourse/postgres-data:/var/lib/postgresql/data'
+        environment:
+            - POSTGRES_DB=${POSTGRES_DATABASE}
+            - POSTGRES_USER=${POSTGRES_USER}
+            - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    
+    concourse_web:
+        build: ./concourse
+        container_name: 'unix_concourse_web'
+        command: web
+        links: 
+            - postgres
+        depends_on: 
+            - postgres
+        volumes: 
+            - './config/concourse/web:/concourse-keys'
+        ports:
+            - '8081:8080'
+        environment:
+            CONCOURSE_EXTERNAL_URL: http://localhost:8081
+            CONCOURSE_POSTGRES_HOST: postgres
+            CONCOURSE_POSTGRES_USER: ${POSTGRES_USER}
+            CONCOURSE_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+            CONCOURSE_POSTGRES_DATABASE: ${POSTGRES_DATABASE}
+            CONCOURSE_ADD_LOCAL_USER: ${CONCOURSE_USER_NAME}:${CONCOURSE_USER_PASSWORD}
+            CONCOURSE_MAIN_TEAM_LOCAL_USER: ${COUNCOURSE_TEAM}
+    
+    concourse_worker:
+        build: ./concourse
+        container_name: 'unix_concourse_worker'
+        command: worker
+        privileged: true
+        depends_on: 
+            - 'concourse_web'
+        volumes: 
+            - './config/concourse/worker:/concourse-keys'
+        stop_signal: SIGUSR2
+        environment:
+            CONCOURSE_TSA_HOST: web:2222
